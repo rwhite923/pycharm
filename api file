@@ -1,0 +1,246 @@
+### API CALL FOR GETTING SOCIAL ACTIVITY DATA FOR THE PAST 31 DAYS (ROLLING 31 DAYS FROM THE CURRENT DATE)
+
+################################################################################
+### import all necessary packages
+
+from azure.storage.blob import (
+    BlockBlobService
+)
+import io
+import json
+import requests
+import time
+import pandas as pd
+from pandas.io.json import json_normalize
+import datetime
+from datetime import tzinfo
+import pytz
+import numpy as np
+
+################################################################################
+### get latest Token for accessing Sprinklr API
+### note:   the Token has to be refreshed every 10 days
+
+### Blob Container Credentials
+accountName = "cesocialblogv2blob"
+accountKey = "CJ6hTreTFwxfj/GsxNPu8vGXs/znHU7Rfw0qomUO+OI8h2DDpKvafk+fmOaDEhmwhPN/QPd7uDVM7ChsqLL29w=="
+TokenContainerName = "sprinklr-tokens"
+blobService = BlockBlobService(account_name=accountName, account_key=accountKey)
+
+### Fetching the list of files
+ListOfFiles = blobService.list_blobs(container_name=TokenContainerName)
+FileNameList = []
+for i in ListOfFiles:
+    FileNameList.append(i.name)
+
+Sorted_FileNameList = sorted(FileNameList, reverse=True)
+LatestFileName = Sorted_FileNameList[0]
+
+### Getting the contents of the lastest files
+LatestRefreshFileContents = blobService.get_blob_to_text(container_name=TokenContainerName, blob_name=LatestFileName,
+                                                         encoding='utf-8')
+FileContents_InDoubleQuotes = LatestRefreshFileContents.content.replace("'", '"')
+FileContents_AsDict = json.loads(FileContents_InDoubleQuotes)
+
+Token = FileContents_AsDict['access_token']
+Authorization = 'Bearer '+Token
+
+################################################################################
+### looping through the API call and data writing to Blob for the past rolling 31 days
+
+for i in range(1,32):
+    ################################################################################
+    # specify START time of the Published Date below :
+
+    # presently we have auto set it to pull data for yesterday
+    yesterday = datetime.date.today() - datetime.timedelta(i)
+
+    start_time = datetime.datetime(
+        year=int(yesterday.strftime('%Y'))
+        ,month=int(yesterday.strftime('%m'))
+        ,day=int(yesterday.strftime('%d'))
+        ,hour=0
+        ,minute=0
+        ,second=0
+        ,microsecond=0,tzinfo=pytz.utc).timestamp()*1000
+    st = start_time.__int__().__str__()
+
+    ################################################################################
+    # specify END time of the Published Date below :
+
+    end_time = datetime.datetime(
+         year=int(yesterday.strftime('%Y'))
+        ,month=int(yesterday.strftime('%m'))
+        ,day=int(yesterday.strftime('%d'))
+        ,hour=23
+        ,minute=59,second=59,microsecond=0,tzinfo=pytz.utc).timestamp()*1000
+    et = end_time.__int__().__str__()
+
+    ################################################################################
+    # Creating strings of the start & end time of Published Dates that would be used part of the file name
+
+    f1 = time.gmtime(start_time/1000.0)
+    FileNameStartTime = f1.tm_year*10000+f1.tm_mon*100+f1.tm_mday
+    FileNameStartTime = FileNameStartTime.__str__()
+
+    ### below FileNameEndTime is not used and hence commented. But retaining the code just in case if it is required latter.
+    # f2 = time.gmtime(end_time/1000.0)
+    # FileNameEndTime = f2.tm_year*10000+f2.tm_mon*100+f2.tm_mday
+    # FileNameEndTime = FileNameEndTime.__str__()
+
+    ################################################################################
+    # The API Url
+
+    url = "https://api2.sprinklr.com/prod2/api/v1/reports/query"
+
+    ################################################################################
+    # The query for API call
+
+    payload = "{" \
+              "\"reportingEngine\":\"PLATFORM\",\"report\":\"POST_INSIGHTS\",\"startTime\":\"" + st + "\",\"endTime\":\"" + et + "\",\"timeZone\":\"UTC\",\"pageSize\":10000,\"page\":0," \
+              "\"groupBys\":[{\"heading\":\"POST_ID\",\"dimensionName\":\"POST_ID\",\"groupType\":\"FIELD\"},{\"heading\":\"ACCOUNT_ID\",\"dimensionName\":\"ACCOUNT_ID\",\"groupType\":\"FIELD\"   },   {\"heading\":\"POST_PUBLISHED_DATE\",\"dimensionName\":\"POST_PUBLISHED_DATE\",\"groupType\":\"FIELD\"   },   {\"heading\":\"CAMPAIGN_ID\",\"dimensionName\":\"CAMPAIGN_ID\",\"groupType\":\"FIELD\"   },   {\"heading\":\"SN_MESSAGE_TYPE\",\"dimensionName\":\"SN_MESSAGE_TYPE\",\"groupType\":\"FIELD\"   },   {\"heading\":\"IS_PROMOTABLE_ONLY_TWEET\",\"dimensionName\":\"IS_PROMOTABLE_ONLY_TWEET\",\"groupType\":\"FIELD\"   },   {\"heading\":\"MEDIA_TYPE\",\"dimensionName\":\"MEDIA_TYPE\",\"groupType\":\"FIELD\"   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7946\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"57f56469e4b086d118365414\",   \"isSecureField\":false}   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7948\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"57f56469e4b086d11836541a\",   \"isSecureField\":false}   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7950\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"57f56469e4b086d118365408\",   \"isSecureField\":false}   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7952\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"57f56469e4b086d11836540b\",   \"isSecureField\":false}   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7960\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"58264094e4b0453dbaeb4228\",   \"isSecureField\":false}   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7962\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"57f56469e4b086d118365420\",   \"isSecureField\":false}   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7964\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"5840b624e4b093c6989bd2a0\",   \"isSecureField\":false}   },   {\"heading\":\"OUTBOUND_CUSTOM_PROPERTY_7966\",\"dimensionName\":\"OUTBOUND_CUSTOM_PROPERTY\",\"groupType\":\"FIELD\",\"details\":{   \"srcType\":\"CUSTOM\",   \"fieldName\":\"5801427ae4b0e4ac6d3c974c\",   \"isSecureField\":false}   }]," \
+              "\"projections\":[{\"heading\":\"POST_FB_CONSUMPTIONS_BY_TYPE_LINK_CLICKS\",\"measurementName\":\"POST_FB_CONSUMPTIONS_BY_TYPE_LINK_CLICKS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TOTAL_ENGAGEMENT\",\"measurementName\":\"TOTAL_ENGAGEMENT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_LIKE_COUNT\",\"measurementName\":\"POST_LIKE_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_SHARE_COUNT\",\"measurementName\":\"POST_SHARE_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_COMMENT_COUNT\",\"measurementName\":\"POST_COMMENT_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_FB_VIDEO_VIEWS\",\"measurementName\":\"POST_FB_VIDEO_VIEWS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_FB_VIDEO_VIEWS_PAID\",\"measurementName\":\"POST_FB_VIDEO_VIEWS_PAID\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"YOUTUBE_VIDEO_AVERAGE_VIEW_DURATION\",\"measurementName\":\"YOUTUBE_VIDEO_AVERAGE_VIEW_DURATION\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"YOUTUBE_VIDEO_VIEWS\",\"measurementName\":\"YOUTUBE_VIDEO_VIEWS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_REACH_COUNT\",\"measurementName\":\"POST_REACH_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_TWITTER_REACH1_COUNT\",\"measurementName\":\"POST_TWITTER_REACH1_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_TWITTER_REACH2_COUNT\",\"measurementName\":\"POST_TWITTER_REACH2_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_FB_IMPRESSIONS_ORGANIC_UNIQUE\",\"measurementName\":\"POST_FB_IMPRESSIONS_ORGANIC_UNIQUE\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_FB_IMPRESSIONS_PAID_UNIQUE\",\"measurementName\":\"POST_FB_IMPRESSIONS_PAID_UNIQUE\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_FB_IMPRESSIONS_VIRAL_UNIQUE\",\"measurementName\":\"POST_FB_IMPRESSIONS_VIRAL_UNIQUE\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"LINKEDIN_VIDEO_VIEWS\",\"measurementName\":\"LINKEDIN_VIDEO_VIEWS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"LINKEDIN_COMPANY_POST_CLICKS_COUNT\",\"measurementName\":\"LINKEDIN_COMPANY_POST_CLICKS_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"LINKEDIN_COMPANY_POST_IMPRESSIONS_COUNT\",\"measurementName\":\"LINKEDIN_COMPANY_POST_IMPRESSIONS_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_REAL_CLICK_COUNT\",\"measurementName\":\"POST_REAL_CLICK_COUNT\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TWITTER_URL_CLICKS\",\"measurementName\":\"TWITTER_URL_CLICKS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TWITTER_VIDEO_VIEWS\",\"measurementName\":\"TWITTER_VIDEO_VIEWS\",\"aggregateFunction\":\"SUM\"   },    {\"heading\":\"TWITTER_MEDIA_ENGAGEMENTS\",\"measurementName\":\"TWITTER_MEDIA_ENGAGEMENTS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TWITTER_HASHTAG_CLICKS\",\"measurementName\":\"TWITTER_HASHTAG_CLICKS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TWITTER_PROFILE_CLICKS\",\"measurementName\":\"TWITTER_PROFILE_CLICKS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TWITTER_DETAIL_EXPANDS\",\"measurementName\":\"TWITTER_DETAIL_EXPANDS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TWITTER_USER_FOLLOWS\",\"measurementName\":\"TWITTER_USER_FOLLOWS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"POST_FB_CONSUMPTIONS_BY_TYPE_OTHER_CLICKS\",\"measurementName\":\"POST_FB_CONSUMPTIONS_BY_TYPE_OTHER_CLICKS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"TWITTER_TOTAL_ENGAGEMENTS\",\"measurementName\":\"TWITTER_TOTAL_ENGAGEMENTS\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"OVERALL_POST_IMPRESSIONS_FB_TW_CUSTOM4596\",\"measurementName\":\"OVERALL_POST_IMPRESSIONS_FB_TW_CUSTOM4596\",\"aggregateFunction\":\"SUM\"   },   {\"heading\":\"YOUTUBE_VIDEO_TITLE\",\"measurementName\":\"YOUTUBE_VIDEO_TITLE\",\"aggregateFunction\":\"EXTERNAL_VALUE\"   },   {\"heading\":\"postIdExternal\",\"measurementName\":\"postIdExternal\",\"aggregateFunction\":\"EXTERNAL_VALUE\"   },   {\"heading\":\"statusIdExternal\",\"measurementName\":\"statusIdExternal\",\"aggregateFunction\":\"EXTERNAL_VALUE\"   },   {\"heading\":\"accountIdExternal\",\"measurementName\":\"accountIdExternal\",\"aggregateFunction\":\"EXTERNAL_VALUE\"}]," \
+              "\"filters\":[" \
+              "{\"filterType\":\"IN\",\"dimensionName\":\"CLIENT_ID\",\"values\":[\"21\"]}," \
+              "{\"filterType\":\"NIN\",\"dimensionName\":\"ACCOUNT_ID\",\"values\":[\"100000452\", \"100000465\", \"100000467\"]}," \
+              "{\"filterType\":\"IN\",\"dimensionName\":\"ACCOUNT_ID\",\"values\":[999998,100000482,100000277,100000491, 100002123, 100000478,100000485,100000471,100000282,100000284,100000285,100000283,100000286,100000480,100000278,100000475,100000464,100000467,100000473,100000477,100000474,100000483,100000459,100000489,100000404,100001026,100000398,100000394,100000451,100005763,100000395,100000407,100000490,100000399,100000487,100000406,100000405,100001066,100019425,100019424,100024228,100000401,100000488,100000400,100000297,100000298,100000479,100000393,100000281,100000481,100026163,100000275,100006532,100000402,100000486,100000476,100000403,100000454,100000455,100019580,100000390,100000465,100000392,100000469,999998,100000482,100000277,100000491,100000478,100000485,100000471,100000282,100000284,100000285,100000283,100000286,100000480,100000278,100000475,100000464,100000467,100000473,100000477,100000474,100000483,100000459,100000489,100000404,100001026,100000398,100000394,100000451,100005763,100000395,100000407,100000490,100000399,100000487,100000406,100000405,100001066,100019425,100019424,100024228,100000401,100000488,100000400,100000297,100000298,100000479,100000393,100000281,100000481,100026163,100000275,100006532,100000402,100000486,100000476,100000403,100000454,100000455,100019580,100000390,100000465,100002140, 100000392,100000469, 100079092, 100002497, 100002519, 100002418, 100005763, 100062438,   999998,999999,-65537,-10]}," \
+              "{\"filterType\":\"NIN\",\"dimensionName\":\"USER_ID\",\"values\":[\"100006832\",\"100012264\",\"100014642\",\"100014647\",\"100003663\"]}]}"
+
+    ################################################################################
+    # Authentication for API call - Note: the Authorization has to be refreshed every 29 days
+
+    headers = {
+    'key': "b8vtc8c2mkkugk93j76rbkvw",
+    'Authorization': Authorization,
+    'Content-Type': "application/json"
+    }
+
+    ################################################################################
+    # The API call
+
+    response = requests.request("POST", url, data=payload,headers=headers)
+
+    ################################################################################
+    # converting the API response into JSON format
+
+    APIresponseInJSON   = response.json()
+
+    ################################################################################
+    # The below section slice & dice the portion of API response that is required
+    # The section also renames some of the columns since those columns dont have proper names
+
+    just_rows_from_API = pd.DataFrame.from_dict(APIresponseInJSON['rows'])
+
+    df_MeasureColumns = just_rows_from_API[np.isfinite(just_rows_from_API[47])] ### deleting rows without ExternalAccountID
+    df_DimensionsColumns = df_MeasureColumns[[0]]   ### seprating the column which has attributes in a nested fashion
+    df_MeasureColumns.pop(0)    ### deleting the nested attributes column and retaning only the measure columns
+
+    For_df_index = []
+    For_df_accountType = []
+    For_df_message = []
+    For_df_permalink = []
+
+    ### looping through the nested attritutes column to flatten/normalize the column into a somple table with just the required columns
+    for i, r in df_DimensionsColumns.iterrows():
+        For_df_index.append(i)
+        For_df_accountType.append(r.get_values().tolist()[0]['accountType'])
+
+        try:
+            For_df_message.append(r.get_values().tolist()[0]['content']['message'])
+        except:
+            For_df_message.append('no message available from Sprinklr')
+            pass
+
+        try:
+            For_df_permalink.append(r.get_values().tolist()[0]['permalink'])
+        except:
+            For_df_permalink.append('no permalink available from Sprinklr')
+            pass
+
+    ### creating a dataframe with just the necessary attributes/dimensions columns
+    df_NecessaryDimensionColumns = pd.DataFrame(
+        data=
+        {
+            'accountType': For_df_accountType,
+            'message': For_df_message,
+            'permalink': For_df_permalink
+        }
+        , index=For_df_index
+    )
+
+    ### renaming the measure columns from simple index (0,1,2 etc.) to proper names
+    df_MeasureColumns = df_MeasureColumns.rename(index=int, columns={
+        1: 'ACCOUNT_ID',
+        2: 'POST_PUBLISHED_DATE',
+        3: 'CAMPAIGN_ID',
+        4: 'SN_MESSAGE_TYPE',
+        5: 'IS_PROMOTABLE_ONLY_TWEET',
+        6: 'MEDIA_TYPE',
+        7: 'OUTBOUND_CUSTOM_PROPERTY_7946',
+        8: 'OUTBOUND_CUSTOM_PROPERTY_7948',
+        9: 'OUTBOUND_CUSTOM_PROPERTY_7950',
+        10: 'OUTBOUND_CUSTOM_PROPERTY_7952',
+        11: 'OUTBOUND_CUSTOM_PROPERTY_7960',
+        12: 'OUTBOUND_CUSTOM_PROPERTY_7962',
+        13: 'OUTBOUND_CUSTOM_PROPERTY_7964',
+        14: 'OUTBOUND_CUSTOM_PROPERTY_7966',
+        15: 'POST_FB_CONSUMPTIONS_BY_TYPE_LINK_CLICKS',
+        16: 'TOTAL_ENGAGEMENT',
+        17: 'POST_LIKE_COUNT',
+        18: 'POST_SHARE_COUNT',
+        19: 'POST_COMMENT_COUNT',
+        20: 'POST_FB_VIDEO_VIEWS',
+        21: 'POST_FB_VIDEO_VIEWS_PAID',
+        22: 'YOUTUBE_VIDEO_AVERAGE_VIEW_DURATION',
+        23: 'YOUTUBE_VIDEO_VIEWS',
+        24: 'POST_REACH_COUNT',
+        25: 'POST_TWITTER_REACH1_COUNT',
+        26: 'POST_TWITTER_REACH2_COUNT',
+        27: 'POST_FB_IMPRESSIONS_ORGANIC_UNIQUE',
+        28: 'POST_FB_IMPRESSIONS_PAID_UNIQUE',
+        29: 'POST_FB_IMPRESSIONS_VIRAL_UNIQUE',
+        30: 'LINKEDIN_VIDEO_VIEWS',
+        31: 'LINKEDIN_COMPANY_POST_CLICKS_COUNT',
+        32: 'LINKEDIN_COMPANY_POST_IMPRESSIONS_COUNT',
+        33: 'POST_REAL_CLICK_COUNT',
+        34: 'TWITTER_URL_CLICKS',
+        35: 'TWITTER_VIDEO_VIEWS',
+        36: 'TWITTER_MEDIA_ENGAGEMENTS',
+        37: 'TWITTER_HASHTAG_CLICKS',
+        38: 'TWITTER_PROFILE_CLICKS',
+        39: 'TWITTER_DETAIL_EXPANDS',
+        40: 'TWITTER_USER_FOLLOWS',
+        41: 'POST_FB_CONSUMPTIONS_BY_TYPE_OTHER_CLICKS',
+        42: 'TWITTER_TOTAL_ENGAGEMENTS',
+        43: 'OVERALL_POST_IMPRESSIONS_FB_TW_CUSTOM4596',
+        44: 'YOUTUBE_VIDEO_TITLE',
+        45: 'postIdExternal',
+        46: 'statusIdExternal',
+        47: 'accountIdExternal'
+    })
+
+    ### now combaining the attributes/dimension dataframe and the dataframe with measures
+    final_df = pd.merge(df_NecessaryDimensionColumns, df_MeasureColumns, left_index=True, right_index=True)
+
+    ### converting the dataframe to json format
+    CESocialExport_json = final_df.to_json(orient='records')
+
+    ################################################################################
+    # Creating the GMT time for the 'Refreshed On' section of the file name
+
+    UTC_epochtime = int(time.time())
+    GMT_Time = time.strftime('%m-%d-%Y_%H:%M:%S',time.gmtime(UTC_epochtime))
+    filename = FileNameStartTime+'_CE_Social_RefreshedOn_GMT_'+GMT_Time+'.json'
+
+    ###############################################################################
+    # Writing to the Azure Blob Storage
+
+    output = io.StringIO()
+    output = CESocialExport_json
+    accountName = "cesocialblogv2blob"
+    accountKey = "CJ6hTreTFwxfj/GsxNPu8vGXs/znHU7Rfw0qomUO+OI8h2DDpKvafk+fmOaDEhmwhPN/QPd7uDVM7ChsqLL29w=="
+    ArchiveContainerName = "cesocialexports"
+    StagingContainerName = "cesocialexports-staging"
+    blobName = filename
+    blobService.create_blob_from_text(container_name=ArchiveContainerName,blob_name=blobName,text=output)
+    blobService.create_blob_from_text(container_name=StagingContainerName,blob_name=blobName,text=output)
